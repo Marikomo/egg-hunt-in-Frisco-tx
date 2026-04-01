@@ -1,65 +1,37 @@
 import streamlit as st
 import pandas as pd
 
-# 1. ページ設定
+# 1. ページ設定 (モバイル最適化)
 st.set_page_config(
     page_title="Easter Scout 2026",
     page_icon="🐰",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
-# 2. デザインの修正 (ここを丸ごと上書きしてください)
+# 2. パステルカラー & 可愛いデザイン (CSS)
 st.markdown("""
     <style>
-    /* 全体のフォント */
-    html, body, [class*="css"] {
-        font-family: 'sans serif';
-    }
-    
-    /* タイトル部分の背景 */
-    .hero-bg {
-        background-color: #FFF0F5;
-        padding: 30px;
+    .main { background-color: #FFFFFF; }
+    .hero {
+        background: linear-gradient(135deg, #FFF0F5 0%, #F0FFF0 100%);
+        padding: 25px;
         border-radius: 20px;
         text-align: center;
+        border: 2px dashed #7B68EE;
         margin-bottom: 20px;
     }
-    
-    /* タイトルの色 */
-    .main-title {
-        color: #7B68EE;
-        font-size: 3rem;
-        font-weight: bold;
-    }
-
-    /* ボタンの色 */
-    div.stButton > button {
-        background-color: #66c2a5 !important;
-        color: white !important;
-        border-radius: 20px !important;
-        border: none !important;
-    }
-
-    /* タブのデザイン */
-    div.stTabs [data-baseweb="tab-list"] button {
-        background-color: #FFF0F5;
-        border-radius: 10px;
-        margin-right: 5px;
-    }
-    div.stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        background-color: #7B68EE;
-        color: white;
-    }
+    h1 { color: #7B68EE !important; }
+    /* サイドバーのパステルグリーン */
+    [data-testid="stSidebar"] { background-color: #F0FFF0; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. タイトル表示
+# 3. タイトル
 st.markdown("""
-    <div class="hero-bg">
-        <div style="font-size: 3rem;">🐰 🥚</div>
-        <div class="main-title">Easter Scout 2026</div>
-        <div style="color: #555; font-size: 1.2rem;">Plano, Frisco, Allen, McKinney & Little Elm</div>
+    <div class="hero">
+        <h1>🐰 Easter Scout 2026 🥚</h1>
+        <p>Plano, Frisco, Allen, McKinney & Little Elm</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -68,33 +40,69 @@ st.markdown("""
 def load_data():
     try:
         df = pd.read_csv("easter_events.csv")
-        df['date'] = pd.to_datetime(df['date'])
-        df['period'] = df['time'].apply(lambda x: '☀️ Morning' if 'AM' in x.upper() else '🌙 Afternoon')
+        # 列名をすべて小文字に強制変換 (KeyError対策)
+        df.columns = [c.lower().strip() for c in df.columns]
+        # 日付を変換
+        df['date'] = pd.to_datetime(df['date']).dt.date
+        # 午前/午後の判定
+        df['period'] = df['time'].apply(lambda x: '☀️ Morning (AM)' if 'AM' in str(x).upper() else '🌙 Afternoon (PM)')
         return df
-    except:
+    except Exception as e:
+        st.error(f"Error loading CSV: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
 if not df.empty:
-    # フィルター
-    st.sidebar.title("Search Filter")
-    city_list = st.sidebar.multiselect("Cities", options=df['city'].unique(), default=df['city'].unique())
+    # --- サイドバー・フィルター ---
+    st.sidebar.header("🌷 Search Filters")
     
-    filtered_df = df[df['city'].isin(city_list)]
+    # 日付フィルター
+    date_options = sorted(df['date'].unique())
+    selected_dates = st.sidebar.multiselect(
+        "Select Date", 
+        options=date_options, 
+        default=date_options,
+        format_func=lambda x: x.strftime('%m/%d (%a)')
+    )
+    
+    # 午前/午後フィルター
+    period_options = ['☀️ Morning (AM)', '🌙 PM (Afternoon)']
+    # データ内の表記に合わせるための変換
+    selected_periods_raw = st.sidebar.multiselect(
+        "Time of Day", 
+        options=['☀️ Morning (AM)', '🌙 Afternoon (PM)'], 
+        default=['☀️ Morning (AM)', '🌙 Afternoon (PM)']
+    )
 
-    # タブ
-    tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
-    
+    # フィルタリング実行
+    mask = (df['date'].isin(selected_dates)) & (df['period'].isin(selected_periods_raw))
+    filtered_df = df[mask]
+
+    # --- メインコンテンツ ---
+    tab1, tab2 = st.tabs(["📍 Map View", "📝 List View"])
+
     with tab1:
+        st.subheader(f"Found {len(filtered_df)} Events")
+        # ズーム可能な地図
         st.map(filtered_df)
-        
+
     with tab2:
-        for _, row in filtered_df.sort_values(by='date').iterrows():
-            with st.expander(f"{row['name']} ({row['city']})"):
-                st.write(f"📅 Date: {row['date'].strftime('%m/%d')}")
-                st.write(f"⏰ Time: {row['time']}")
-                st.link_button("Directions 🚗", f"https://www.google.com/maps/search/?api=1&query={row['lat']},{row['lon']}")
-                st.link_button("Official Site 🌐", row.get('url', 'https://planomoms.com/easter-egg-hunts/'))
+        # 日付と時間でソート
+        sorted_df = filtered_df.sort_values(by=['date', 'time'])
+        for _, row in sorted_df.iterrows():
+            with st.expander(f"【{row['city']}】 {row['name']} "):
+                st.write(f"📅 **Date:** {row['date'].strftime('%b %d')}")
+                st.write(f"⏰ **Time:** {row['time']}")
+                st.write(f"📍 **Loc:** {row['location']}")
+                
+                # エラー回避のための .get() メソッド
+                url = row.get('url', 'https://planomoms.com/easter-egg-hunts/')
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.link_button("Directions 🚗", f"https://www.google.com/maps/search/?api=1&query={row['lat']},{row['lon']}")
+                with col2:
+                    st.link_button("Official Site 🌐", url)
 else:
-    st.warning("Please upload 'easter_events.csv' to GitHub to see the events!")
+    st.warning("Please check if 'easter_events.csv' is uploaded to GitHub.")
