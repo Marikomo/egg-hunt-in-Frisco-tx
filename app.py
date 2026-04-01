@@ -95,6 +95,6 @@ if not df.empty:
                 st.write(f"📅 Date: {row['date'].strftime('%m/%d')}")
                 st.write(f"⏰ Time: {row['time']}")
                 st.link_button("Directions 🚗", f"https://www.google.com/maps/search/?api=1&query={row['lat']},{row['lon']}")
-                st.link_button("Official Site 🌐", row['url'])
+                st.link_button("Official Site 🌐", row.get('url', 'https://planomoms.com/easter-egg-hunts/'))
 else:
     st.warning("Please upload 'easter_events.csv' to GitHub to see the events!")
