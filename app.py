@@ -9,27 +9,20 @@ st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wid
 @st.cache_data
 def load_data():
     try:
-        # まずファイルをバイナリで読み込んで、区切り文字を推測させる
-        with open("easter_events.csv", "rb") as f:
-            content = f.read().decode("utf-8-sig")
+        # sep=None, engine='python' を使うと、pandasが自動で区切り文字を判別します
+        df = pd.read_csv("easter_events.csv", sep=None, engine='python', encoding='utf-8-sig')
         
-        # pandasの read_csv で sep=None を使うと、カンマかセミコロンかを自動判別します
-        df = pd.read_csv(io.StringIO(content), sep=None, engine='python')
-        
-        # 全ての列名を小文字にして空白を消す
+        # 列名のクリーニング（空白削除・小文字化）
         df.columns = [str(c).strip().lower() for c in df.columns]
         
-        # 'date'列を日付型に変換。失敗した行は消す
+        # date列を日付型に変換
         if 'date' in df.columns:
             df['date_dt'] = pd.to_datetime(df['date'], errors='coerce')
-            df = df.dropna(subset=['date_dt'])
+            df = df.dropna(subset=['date_dt']) # 変換に失敗した行（空行など）を除去
             return df
-        else:
-            # まだ 'date' が見つからない場合は、エラー内容を表示
-            st.error(f"Debug: Currently identified columns are {list(df.columns)}")
-            return pd.DataFrame()
+        return pd.DataFrame()
     except Exception as e:
-        st.error(f"Read Error: {e}")
+        st.error(f"Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
