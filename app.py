@@ -1,24 +1,20 @@
 import streamlit as st
 import pandas as pd
-import io
 
-# 1. ページ設定
-st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wide")
-
-# 2. データの読み込み (区切り文字を自動判別する最強版)
-@st.cache_data
+# データの読み込み（キャッシュを使わずに強制的に最新を見に行く設定）
 def load_data():
     try:
-        # sep=None, engine='python' を使うと、pandasが自動で区切り文字を判別します
+        # sep=None を使うことで、カンマでもセミコロンでも自動判別します
         df = pd.read_csv("easter_events.csv", sep=None, engine='python', encoding='utf-8-sig')
+        # 全ての列名を小文字＋空白削除
+        df.columns = df.columns.str.strip().str.lower()
         
-        # 列名のクリーニング（空白削除・小文字化）
-        df.columns = [str(c).strip().lower() for c in df.columns]
-        
-        # date列を日付型に変換
+        # 'date'列を日付型に
         if 'date' in df.columns:
             df['date_dt'] = pd.to_datetime(df['date'], errors='coerce')
-            df = df.dropna(subset=['date_dt']) # 変換に失敗した行（空行など）を除去
+            df = df.dropna(subset=['date_dt'])
+            # 曜日付きの表示用列を作成
+            df['display_date'] = df['date_dt'].dt.strftime('%m/%d (%a)')
             return df
         return pd.DataFrame()
     except Exception as e:
@@ -27,39 +23,11 @@ def load_data():
 
 df = load_data()
 
-# --- UI表示 ---
-st.markdown("<h1 style='text-align: center; color: #7B68EE;'>🐰 Easter Scout 2026 🥚</h1>", unsafe_allow_html=True)
-
-if not df.empty and 'date_dt' in df.columns:
-    # フィルター設定
-    st.sidebar.header("🌷 Filters")
-    date_options = sorted(df['date_dt'].unique())
-    selected_dates = st.sidebar.multiselect(
-        "Select Date", 
-        options=date_options, 
-        default=date_options,
-        format_func=lambda x: x.strftime('%m/%d (%a)')
-    )
-    
-    f_df = df[df['date_dt'].isin(selected_dates)]
-
-    # タブ表示
-    tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
-    
-    with tab1:
-        # 地図。lat/lonがあれば表示
-        if 'lat' in f_df.columns and 'lon' in f_df.columns:
-            st.map(f_df)
-    
-    with tab2:
-        # 表示用に曜日付きの日付を作成
-        show_df = f_df.copy()
-        show_df['date_with_day'] = show_df['date_dt'].dt.strftime('%m/%d (%a)')
-        
-        # リストに表示する列（存在する物だけ）
-        display_cols = ['name', 'date_with_day', 'time', 'location', 'city', 'url']
-        actual_cols = [c for c in display_cols if c in show_df.columns]
-        st.dataframe(show_df[actual_cols], use_container_width=True)
-
+# --- 以降、表示処理 ---
+if not df.empty:
+    st.title("🐰 Easter Scout 2026 🥚")
+    # ここに以前作成したマップやリストのコードが続きます...
+    st.map(df)
+    st.dataframe(df[['name', 'display_date', 'time', 'location', 'city']])
 else:
-    st.info("💡 Make sure 'easter_events.csv' is saved as a standard CSV (Comma Separated).")
+    st.info("Loading latest data... Please check your CSV on GitHub.")
