@@ -1,57 +1,62 @@
 import streamlit as st
 import pandas as pd
 
-# 1. ページ設定
+# 1. Page Config
 st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wide")
 
-# 2. データの読み込み（どんなCSVでも読み込む防弾仕様）
+# 2. Advanced Data Loading (Error-Proof)
 @st.cache_data
 def load_data():
     try:
-        # encoding='utf-8-sig' でExcel特有の目に見えない文字（BOM）を除去
+        # Read CSV with BOM handling
         df = pd.read_csv("easter_events.csv", encoding='utf-8-sig')
-        
-        # 全ての列名から空白を除去し、小文字に統一
+        # Standardize column names (lowercase & no spaces)
         df.columns = df.columns.str.strip().str.lower()
         
-        # もし 'date' という列がなければ、最初に見つかった「日付っぽい列」を強制的に 'date' と命名
-        if 'date' not in df.columns:
-            # 1列目が日付である可能性が高いので、名前を無理やり変える
-            df.rename(columns={df.columns[1]: 'date'}, inplace=True)
-        
-        # 日付変換（エラーは空欄にする）
-        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date
-        df = df.dropna(subset=['date'])
-        
-        # lat/lon, url なども同様にクリーンアップ
-        for col in ['lat', 'lon', 'url', 'time', 'city', 'name']:
-            if col not in df.columns:
-                df[col] = "Check Website" if col == 'url' else "N/A"
-        
+        # Ensure 'date' column exists for filtering
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date
+            df = df.dropna(subset=['date'])
         return df
     except Exception as e:
-        st.error(f"Critical Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# --- メイン表示 ---
-if not df.empty:
-    st.title("🐰 Easter Scout 2026")
-    
-    # フィルター設定
-    st.sidebar.header("🌷 Filters")
-    date_list = sorted(df['date'].unique())
-    sel_dates = st.sidebar.multiselect("Select Date", options=date_list, default=date_list)
-    
-    # フィルタリング
-    f_df = df[df['date'].isin(sel_dates)]
+# --- Main App ---
+st.title("🐰 Easter Scout 2026")
 
-    # 地図とリストの表示
-    tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
-    with tab1:
-        st.map(f_df)
-    with tab2:
-        st.dataframe(f_df[['name', 'date', 'time', 'location', 'city']])
+if not df.empty:
+    # Sidebar Filter
+    st.sidebar.header("🌷 Filters")
+    if 'date' in df.columns:
+        date_list = sorted(df['date'].unique())
+        sel_dates = st.sidebar.multiselect("Select Date", options=date_list, default=date_list)
+        f_df = df[df['date'].isin(sel_dates)]
+    else:
+        f_df = df
+
+    # Tabs
+    tab_map, tab_list = st.tabs(["📍 Map View", "📋 List View"])
+    
+    with tab_map:
+        # Only show map if lat/lon exist
+        if 'lat' in f_df.columns and 'lon' in f_df.columns:
+            st.map(f_df)
+        else:
+            st.warning("Location data (lat/lon) missing in CSV.")
+
+    with tab_list:
+        # ERROR FIX: Only show columns that actually exist in your CSV
+        cols_to_show = ['name', 'date', 'time', 'location', 'city', 'url']
+        existing_cols = [c for c in cols_to_show if c in f_df.columns]
+        
+        if existing_cols:
+            st.subheader("Event List")
+            st.dataframe(f_df[existing_cols], use_container_width=True)
+        else:
+            st.write("Full data table:")
+            st.dataframe(f_df) # Show everything if specific columns aren't found
+            
 else:
-    st.warning("⚠️ Still having trouble reading 'easter_events.csv'. Please check the file on GitHub.")
+    st.warning("⚠️ CSV data could not be loaded. Please check 'easter_events.csv' on GitHub.")
