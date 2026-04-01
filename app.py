@@ -2,69 +2,70 @@ import streamlit as st
 import pandas as pd
 import io
 
-# 1. ページ設定
+# 1. Page Config
 st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wide")
 
-# 2. データの読み込み (区切りエラーを強制修正する最強版)
+# 2. Strong Data Loading (Force CSV split)
 @st.cache_data
 def load_data():
     try:
-        # まずは普通に読み込む
-        df = pd.read_csv("easter_events.csv", encoding='utf-8-sig')
+        # まずはファイルを文字列として直接読み込む
+        with open("easter_events.csv", "r", encoding="utf-8-sig") as f:
+            lines = f.readlines()
         
-        # 【最重要：修正ポイント】
-        # もし1列目にカンマが含まれていたら、それは区切りに失敗しているので強制分割する
-        if len(df.columns) == 1 or 'name,date' in str(df.columns[0]):
-            # 文字列として読み込み直し、明示的にカンマで区切る
-            df = pd.read_csv("easter_events.csv", sep=',', encoding='utf-8-sig', on_bad_lines='skip')
+        # 1行目が引用符で囲まれている場合を想定し、中身を直接分解する
+        header = lines[0].strip().replace('"', '').split(',')
+        data = [line.strip().replace('"', '').split(',') for line in lines[1:]]
         
-        # 列名の空白除去と小文字化
-        df.columns = [str(c).strip().lower() for c in df.columns]
+        # 強制的に正しい列名でデータフレームを作成
+        df = pd.DataFrame(data)
+        # 列数が合わない場合を想定し、見出しの数だけ採用
+        df = df.iloc[:, :len(header)]
+        df.columns = [h.strip().lower() for h in header]
         
-        # date列を日付型に変換
+        # 日付処理
         if 'date' in df.columns:
             df['date_dt'] = pd.to_datetime(df['date'], errors='coerce')
             df = df.dropna(subset=['date_dt'])
+            # 緯度経度を数値に変換
+            df['lat'] = pd.to_numeric(df['lat'], errors='coerce')
+            df['lon'] = pd.to_numeric(df['lon'], errors='coerce')
             return df
-        else:
-            # まだ解決しない場合はデバッグ情報を出す
-            st.error(f"Debug: Still finding columns {list(df.columns)}")
-            return pd.DataFrame()
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"Read Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# 3. メイン表示 (パステルカラーデザイン)
+# 3. Main UI
 st.markdown("<h1 style='text-align: center; color: #7B68EE;'>🐰 Easter Scout 2026 🥚</h1>", unsafe_allow_html=True)
 
-if not df.empty and 'date_dt' in df.columns:
-    # 曜日付きの日付を作成
-    df['display_date'] = df['date_dt'].dt.strftime('%m/%d (%a)')
-    
-    # フィルター (サイドバー)
+if not df.empty:
+    # Sidebar Filters
     st.sidebar.header("🌷 Filters")
-    date_list = sorted(df['date_dt'].unique())
-    sel_dates = st.sidebar.multiselect(
+    date_options = sorted(df['date_dt'].unique())
+    selected_dates = st.sidebar.multiselect(
         "Select Date", 
         options=date_options, 
-        default=date_options, 
+        default=date_options,
         format_func=lambda x: x.strftime('%m/%d (%a)')
     )
     
-    f_df = df[df['date_dt'].isin(sel_dates)]
+    f_df = df[df['date_dt'].isin(selected_dates)]
 
-    # タブ
+    # Tabs
     tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
+    
     with tab1:
-        # lat/lon列が存在するかチェックして地図を表示
-        if 'lat' in f_df.columns and 'lon' in f_df.columns:
+        if not f_df.empty:
             st.map(f_df)
+    
     with tab2:
-        # 表示する列を動的に選択
-        cols = ['name', 'display_date', 'time', 'location', 'city', 'url']
-        existing = [c for c in cols if c in f_df.columns]
-        st.dataframe(f_df[existing], use_container_width=True)
+        show_df = f_df.copy()
+        show_df['date_display'] = show_df['date_dt'].dt.strftime('%m/%d (%a)')
+        cols_to_show = ['name', 'date_display', 'time', 'location', 'city', 'url']
+        existing = [c for c in cols_to_show if c in show_df.columns]
+        st.dataframe(show_df[existing], use_container_width=True)
 else:
-    st.info("💡 Please refresh the page after updating the code in GitHub!")
+    st.info("💡 Make sure to 'Clear Cache' and Refresh your browser!")
