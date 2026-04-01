@@ -62,10 +62,20 @@ if not df.empty:
             st.map(f_df)
     
     with tab2:
+        # 1. データのコピーを作成
         show_df = f_df.copy()
+        
+        # 2. 【重要】元の 'date'（日付）から、曜日付きの新しい表示用データを作る
+        # ※ 'date_dt' は読み込み時に日付型に変換したもの
         show_df['date_display'] = show_df['date_dt'].dt.strftime('%m/%d (%a)')
+        
+        # 3. 表示したい列のリスト（曜日付きの 'date_display' を指定）
         cols_to_show = ['name', 'date_display', 'time', 'location', 'city', 'url']
+        
+        # 4. CSVの中に存在する列だけを抽出（安全策）
         existing = [c for c in cols_to_show if c in show_df.columns]
+        
+        # 5. テーブルを表示
         st.dataframe(show_df[existing], use_container_width=True)
 else:
     st.info("💡 Make sure to 'Clear Cache' and Refresh your browser!")
