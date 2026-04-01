@@ -9,13 +9,13 @@ st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wid
 @st.cache_data
 def load_data():
     try:
-        # ファイルを読み込む
+        # まずは普通に読み込む
         df = pd.read_csv("easter_events.csv", encoding='utf-8-sig')
         
         # 【最重要：修正ポイント】
         # もし1列目にカンマが含まれていたら、それは区切りに失敗しているので強制分割する
         if len(df.columns) == 1 or 'name,date' in str(df.columns[0]):
-            # CSVを文字列として読み込み直し、明示的にカンマで区切る
+            # 文字列として読み込み直し、明示的にカンマで区切る
             df = pd.read_csv("easter_events.csv", sep=',', encoding='utf-8-sig', on_bad_lines='skip')
         
         # 列名の空白除去と小文字化
@@ -27,7 +27,8 @@ def load_data():
             df = df.dropna(subset=['date_dt'])
             return df
         else:
-            st.error(f"Debug: Found columns {list(df.columns)}")
+            # まだ解決しない場合はデバッグ情報を出す
+            st.error(f"Debug: Still finding columns {list(df.columns)}")
             return pd.DataFrame()
     except Exception as e:
         st.error(f"Read Error: {e}")
@@ -45,14 +46,19 @@ if not df.empty and 'date_dt' in df.columns:
     # フィルター (サイドバー)
     st.sidebar.header("🌷 Filters")
     date_list = sorted(df['date_dt'].unique())
-    sel_dates = st.sidebar.multiselect("Select Date", options=date_list, default=date_list, format_func=lambda x: x.strftime('%m/%d (%a)'))
+    sel_dates = st.sidebar.multiselect(
+        "Select Date", 
+        options=date_options, 
+        default=date_options, 
+        format_func=lambda x: x.strftime('%m/%d (%a)')
+    )
     
     f_df = df[df['date_dt'].isin(sel_dates)]
 
     # タブ
     tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
     with tab1:
-        # lat/lon列が存在するかチェック
+        # lat/lon列が存在するかチェックして地図を表示
         if 'lat' in f_df.columns and 'lon' in f_df.columns:
             st.map(f_df)
     with tab2:
@@ -61,4 +67,4 @@ if not df.empty and 'date_dt' in df.columns:
         existing = [c for c in cols if c in f_df.columns]
         st.dataframe(f_df[existing], use_container_width=True)
 else:
-    st.info("💡 Make sure to refresh the page after updating the code!")
+    st.info("💡 Please refresh the page after updating the code in GitHub!")
