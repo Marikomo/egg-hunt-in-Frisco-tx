@@ -4,72 +4,54 @@ import pandas as pd
 # 1. ページ設定
 st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wide")
 
-# 2. デザイン (CSS) - パステルカラー
-st.markdown("""
-    <style>
-    .main { background-color: #FFFFFF; }
-    .hero { background: linear-gradient(135deg, #FFF0F5 0%, #F0FFF0 100%); padding: 20px; border-radius: 15px; text-align: center; border: 2px dashed #7B68EE; }
-    h1 { color: #7B68EE !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.markdown('<div class="hero"><h1>🐰 Easter Scout 2026 🥚</h1><p>Plano, Frisco, Allen, McKinney & Little Elm</p></div>', unsafe_allow_html=True)
-
-# 3. データの読み込み（エラー回避機能付き）
+# 2. データの読み込み（どんなCSVでも読み込む防弾仕様）
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv("easter_events.csv")
-        # 列名をきれいにする（大文字小文字、空白を無視）
-        df.columns = [c.lower().strip() for c in df.columns]
+        # encoding='utf-8-sig' でExcel特有の目に見えない文字（BOM）を除去
+        df = pd.read_csv("easter_events.csv", encoding='utf-8-sig')
         
-        # 'date'列が存在するかチェック
-        if 'date' in df.columns:
-            # 日付形式を自動判別して変換（エラーは無視）
-            df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date
-            # 日付が空の行を削除
-            df = df.dropna(subset=['date'])
+        # 全ての列名から空白を除去し、小文字に統一
+        df.columns = df.columns.str.strip().str.lower()
         
-        # 午前/午後の判定（time列があれば）
-        if 'time' in df.columns:
-            df['period'] = df['time'].apply(lambda x: '☀️ Morning (AM)' if 'AM' in str(x).upper() else '🌙 Afternoon (PM)')
-        else:
-            df['period'] = '☀️ Morning (AM)'
-            
+        # もし 'date' という列がなければ、最初に見つかった「日付っぽい列」を強制的に 'date' と命名
+        if 'date' not in df.columns:
+            # 1列目が日付である可能性が高いので、名前を無理やり変える
+            df.rename(columns={df.columns[1]: 'date'}, inplace=True)
+        
+        # 日付変換（エラーは空欄にする）
+        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date
+        df = df.dropna(subset=['date'])
+        
+        # lat/lon, url なども同様にクリーンアップ
+        for col in ['lat', 'lon', 'url', 'time', 'city', 'name']:
+            if col not in df.columns:
+                df[col] = "Check Website" if col == 'url' else "N/A"
+        
         return df
     except Exception as e:
+        st.error(f"Critical Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
-# 4. アプリのメイン表示
+# --- メイン表示 ---
 if not df.empty:
-    # サイドバーフィルター
+    st.title("🐰 Easter Scout 2026")
+    
+    # フィルター設定
     st.sidebar.header("🌷 Filters")
-    
-    # 日付フィルター
     date_list = sorted(df['date'].unique())
-    sel_dates = st.sidebar.multiselect("Select Date", options=date_list, default=date_list, format_func=lambda x: x.strftime('%m/%d'))
+    sel_dates = st.sidebar.multiselect("Select Date", options=date_list, default=date_list)
     
-    # 午前/午後フィルター
-    sel_periods = st.sidebar.multiselect("Time of Day", options=['☀️ Morning (AM)', '🌙 Afternoon (PM)'], default=['☀️ Morning (AM)', '🌙 Afternoon (PM)'])
-
     # フィルタリング
-    f_df = df[(df['date'].isin(sel_dates)) & (df['period'].isin(sel_periods))]
+    f_df = df[df['date'].isin(sel_dates)]
 
+    # 地図とリストの表示
     tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
-
     with tab1:
-        st.subheader(f"Found {len(f_df)} Events")
-        # 地図を表示
         st.map(f_df)
-
     with tab2:
-        for _, row in f_df.sort_values(by='date').iterrows():
-            with st.expander(f"{row.get('name', 'Event')} ({row.get('city', 'Area')})"):
-                st.write(f"📅 Date: {row['date']}")
-                st.write(f"⏰ Time: {row.get('time', 'Check Website')}")
-                st.link_button("Directions 🚗", f"https://www.google.com/maps/search/?api=1&query={row['lat']},{row['lon']}")
-                st.link_button("Website 🌐", row.get('url', 'https://planomoms.com/'))
+        st.dataframe(f_df[['name', 'date', 'time', 'location', 'city']])
 else:
-    st.warning("⚠️ Data could not be loaded. Please check your CSV format on GitHub.")
+    st.warning("⚠️ Still having trouble reading 'easter_events.csv'. Please check the file on GitHub.")
