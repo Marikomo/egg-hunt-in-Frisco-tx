@@ -1,108 +1,75 @@
 import streamlit as st
 import pandas as pd
 
-# 1. ページ設定 (モバイル最適化)
-st.set_page_config(
-    page_title="Easter Scout 2026",
-    page_icon="🐰",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# 1. ページ設定
+st.set_page_config(page_title="Easter Scout 2026", page_icon="🐰", layout="wide")
 
-# 2. パステルカラー & 可愛いデザイン (CSS)
+# 2. デザイン (CSS) - パステルカラー
 st.markdown("""
     <style>
     .main { background-color: #FFFFFF; }
-    .hero {
-        background: linear-gradient(135deg, #FFF0F5 0%, #F0FFF0 100%);
-        padding: 25px;
-        border-radius: 20px;
-        text-align: center;
-        border: 2px dashed #7B68EE;
-        margin-bottom: 20px;
-    }
+    .hero { background: linear-gradient(135deg, #FFF0F5 0%, #F0FFF0 100%); padding: 20px; border-radius: 15px; text-align: center; border: 2px dashed #7B68EE; }
     h1 { color: #7B68EE !important; }
-    /* サイドバーのパステルグリーン */
-    [data-testid="stSidebar"] { background-color: #F0FFF0; }
     </style>
     """, unsafe_allow_html=True)
 
-# 3. タイトル
-st.markdown("""
-    <div class="hero">
-        <h1>🐰 Easter Scout 2026 🥚</h1>
-        <p>Plano, Frisco, Allen, McKinney & Little Elm</p>
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown('<div class="hero"><h1>🐰 Easter Scout 2026 🥚</h1><p>Plano, Frisco, Allen, McKinney & Little Elm</p></div>', unsafe_allow_html=True)
 
-# 4. データの読み込み
+# 3. データの読み込み（エラー回避機能付き）
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv("easter_events.csv")
-        # 列名をすべて小文字に強制変換 (KeyError対策)
+        # 列名をきれいにする（大文字小文字、空白を無視）
         df.columns = [c.lower().strip() for c in df.columns]
-        # 日付を変換
-        df['date'] = pd.to_datetime(df['date']).dt.date
-        # 午前/午後の判定
-        df['period'] = df['time'].apply(lambda x: '☀️ Morning (AM)' if 'AM' in str(x).upper() else '🌙 Afternoon (PM)')
+        
+        # 'date'列が存在するかチェック
+        if 'date' in df.columns:
+            # 日付形式を自動判別して変換（エラーは無視）
+            df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date
+            # 日付が空の行を削除
+            df = df.dropna(subset=['date'])
+        
+        # 午前/午後の判定（time列があれば）
+        if 'time' in df.columns:
+            df['period'] = df['time'].apply(lambda x: '☀️ Morning (AM)' if 'AM' in str(x).upper() else '🌙 Afternoon (PM)')
+        else:
+            df['period'] = '☀️ Morning (AM)'
+            
         return df
     except Exception as e:
-        st.error(f"Error loading CSV: {e}")
         return pd.DataFrame()
 
 df = load_data()
 
+# 4. アプリのメイン表示
 if not df.empty:
-    # --- サイドバー・フィルター ---
-    st.sidebar.header("🌷 Search Filters")
+    # サイドバーフィルター
+    st.sidebar.header("🌷 Filters")
     
     # 日付フィルター
-    date_options = sorted(df['date'].unique())
-    selected_dates = st.sidebar.multiselect(
-        "Select Date", 
-        options=date_options, 
-        default=date_options,
-        format_func=lambda x: x.strftime('%m/%d (%a)')
-    )
+    date_list = sorted(df['date'].unique())
+    sel_dates = st.sidebar.multiselect("Select Date", options=date_list, default=date_list, format_func=lambda x: x.strftime('%m/%d'))
     
     # 午前/午後フィルター
-    period_options = ['☀️ Morning (AM)', '🌙 PM (Afternoon)']
-    # データ内の表記に合わせるための変換
-    selected_periods_raw = st.sidebar.multiselect(
-        "Time of Day", 
-        options=['☀️ Morning (AM)', '🌙 Afternoon (PM)'], 
-        default=['☀️ Morning (AM)', '🌙 Afternoon (PM)']
-    )
+    sel_periods = st.sidebar.multiselect("Time of Day", options=['☀️ Morning (AM)', '🌙 Afternoon (PM)'], default=['☀️ Morning (AM)', '🌙 Afternoon (PM)'])
 
-    # フィルタリング実行
-    mask = (df['date'].isin(selected_dates)) & (df['period'].isin(selected_periods_raw))
-    filtered_df = df[mask]
+    # フィルタリング
+    f_df = df[(df['date'].isin(sel_dates)) & (df['period'].isin(sel_periods))]
 
-    # --- メインコンテンツ ---
-    tab1, tab2 = st.tabs(["📍 Map View", "📝 List View"])
+    tab1, tab2 = st.tabs(["📍 Map View", "📋 List View"])
 
     with tab1:
-        st.subheader(f"Found {len(filtered_df)} Events")
-        # ズーム可能な地図
-        st.map(filtered_df)
+        st.subheader(f"Found {len(f_df)} Events")
+        # 地図を表示
+        st.map(f_df)
 
     with tab2:
-        # 日付と時間でソート
-        sorted_df = filtered_df.sort_values(by=['date', 'time'])
-        for _, row in sorted_df.iterrows():
-            with st.expander(f"【{row['city']}】 {row['name']} "):
-                st.write(f"📅 **Date:** {row['date'].strftime('%b %d')}")
-                st.write(f"⏰ **Time:** {row['time']}")
-                st.write(f"📍 **Loc:** {row['location']}")
-                
-                # エラー回避のための .get() メソッド
-                url = row.get('url', 'https://planomoms.com/easter-egg-hunts/')
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.link_button("Directions 🚗", f"https://www.google.com/maps/search/?api=1&query={row['lat']},{row['lon']}")
-                with col2:
-                    st.link_button("Official Site 🌐", url)
+        for _, row in f_df.sort_values(by='date').iterrows():
+            with st.expander(f"{row.get('name', 'Event')} ({row.get('city', 'Area')})"):
+                st.write(f"📅 Date: {row['date']}")
+                st.write(f"⏰ Time: {row.get('time', 'Check Website')}")
+                st.link_button("Directions 🚗", f"https://www.google.com/maps/search/?api=1&query={row['lat']},{row['lon']}")
+                st.link_button("Website 🌐", row.get('url', 'https://planomoms.com/'))
 else:
-    st.warning("Please check if 'easter_events.csv' is uploaded to GitHub.")
+    st.warning("⚠️ Data could not be loaded. Please check your CSV format on GitHub.")
